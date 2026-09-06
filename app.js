@@ -506,14 +506,11 @@
           .map(ev => `<i class="ev ${ev.kind}">${ev.label}</i>`)
           .join("")}</span>`;
         pathLabels.set(step.key, [...(pathLabels.get(step.key) ?? []), html]);
-        const sprites = pathSprites.get(step.key) ?? new Map();
+        // One entry per battle sprite; grouping happens when the card is rendered.
+        const sprites = pathSprites.get(step.key) ?? [];
         for (const ev of step.events ?? []) {
           for (const spriteKey of ev.sprites ?? []) {
-            // A team boss keeps its own entry even when it shares the silhouette with the grunts.
-            const id = ev.boss ? `${spriteKey}#boss` : spriteKey;
-            const entry = sprites.get(id) ?? { spriteKey, kind: ev.kind, boss: !!ev.boss, labels: [] };
-            entry.labels.push(ev.label);
-            sprites.set(id, entry);
+            sprites.push({ spriteKey, kind: ev.kind, boss: !!ev.boss, label: ev.label, wave: ev.wave });
           }
         }
         pathSprites.set(step.key, sprites);
@@ -550,28 +547,33 @@
       el.classList.toggle("wanted-hit", wantedHits?.has(key) ?? false);
       el.classList.toggle("on-path", pathLabels.has(key));
       el.querySelector(".stage").innerHTML = (pathLabels.get(key) ?? []).join('<span class="sep">·</span>');
-      const sprites = pathSprites.get(key) ?? new Map();
-      el.querySelector(".visitors").innerHTML = [...sprites]
-        .map(([, info]) => {
-          const spriteKey = info.spriteKey;
-          const waves = [...new Set(info.labels)].join(", ");
-          // Both rivals stand together, overlapping, since which one you get depends on your own gender.
-          if (spriteKey === "rival_m" && sprites.has("rival_f")) {
-            const m = DATA.trainers.rival_m;
-            const f = DATA.trainers.rival_f;
-            const title = `${m.name} / ${f.name} · ${waves}`;
-            return `<span class="tpair" style="width:${Math.round((m.w * 0.55 + f.w) * 0.42)}px;height:${Math.round(Math.max(m.h, f.h) * 0.42)}px">${trainerSpriteHtml(
-              "rival_m",
-              0.42,
-              title,
-            )}${trainerSpriteHtml("rival_f", 0.42, title)}</span>`;
-          }
-          if (spriteKey === "rival_f" && sprites.has("rival_m")) {
-            return "";
-          }
-          return trainerSpriteHtml(spriteKey, 0.42, `${DATA.trainers[spriteKey].name} · ${waves}`, info.boss ? "boss" : "");
-        })
+      // Three overlapping groups over the backdrop: the evil team on the left
+      // (one figure per battle you face here), the rival pair in the middle,
+      // the biome's possible gym leaders on the right.
+      const list = pathSprites.get(key) ?? [];
+      const SCALE = 0.42;
+      const team = list
+        .filter(s => s.kind === "team")
+        .sort((a, b) => a.wave - b.wave)
+        .map(s => trainerSpriteHtml(s.spriteKey, SCALE, `${DATA.trainers[s.spriteKey].name} · ${s.label}`, s.boss ? "boss" : ""))
         .join("");
+      const rivalWaves = [...new Set(list.filter(s => s.kind === "rival").map(s => s.label))];
+      const rivalTitle = `${DATA.trainers?.rival_m?.name ?? "Rival"} / ${DATA.trainers?.rival_f?.name ?? "Rival"} · ${rivalWaves.join(", ")}`;
+      const rival = rivalWaves.length
+        ? ["rival_m", "rival_f"]
+            .filter(k => DATA.trainers?.[k])
+            .map(k => trainerSpriteHtml(k, SCALE, rivalTitle))
+            .join("")
+        : "";
+      const gym = new Map();
+      for (const s of list.filter(s => s.kind === "gym")) {
+        gym.set(s.spriteKey, [...(gym.get(s.spriteKey) ?? []), s.label]);
+      }
+      const leaders = [...gym]
+        .map(([spriteKey, labels]) => trainerSpriteHtml(spriteKey, SCALE, `${DATA.trainers[spriteKey].name} · ${[...new Set(labels)].join(", ")}`))
+        .join("");
+      el.querySelector(".visitors").innerHTML =
+        `<span class="vgroup left">${team}</span><span class="vgroup mid">${rival}</span><span class="vgroup right">${leaders}</span>`;
     }
   }
 

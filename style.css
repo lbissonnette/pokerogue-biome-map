@@ -591,13 +591,23 @@ button {
 /* Trainer sprites standing on a drawn route's card: gym leaders, the rival, the evil team. */
 .thumb .visitors {
   position: absolute;
-  left: 3px;
-  right: 3px;
+  left: 2px;
+  right: 2px;
   bottom: 0;
   display: flex;
+  justify-content: space-between;
   align-items: flex-end;
-  gap: 2px;
   pointer-events: none;
+}
+
+/* Each group overlaps its figures like a small crowd; later ones stand in front. */
+.vgroup {
+  display: flex;
+  align-items: flex-end;
+}
+
+.vgroup .tsprite + .tsprite {
+  margin-left: -7px;
 }
 
 .tsprite {
@@ -610,24 +620,6 @@ button {
 /* The evil team's boss gets a gold outline, so the silhouette can tell a boss wave from a grunt wave. */
 .tsprite.boss {
   filter: drop-shadow(0 0 1px var(--gold)) drop-shadow(0 0 1px var(--gold)) drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.85));
-}
-
-/* The two rivals as one overlapping pair. */
-.tpair {
-  position: relative;
-  display: inline-block;
-  flex: none;
-}
-
-.tpair .tsprite {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-}
-
-.tpair .tsprite:last-child {
-  left: auto;
-  right: 0;
 }
 
 .plan-form label[hidden] {
