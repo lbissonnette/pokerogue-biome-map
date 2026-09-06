@@ -588,6 +588,29 @@ button {
   gap: 3px;
 }
 
+/* Trainer sprites standing on a drawn route's card: gym leaders, the rival, the evil team. */
+.thumb .visitors {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.tsprite {
+  display: inline-block;
+  background-repeat: no-repeat;
+  filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.85));
+  pointer-events: auto;
+}
+
+.plan-form label[hidden] {
+  display: none;
+}
+
 .stage .visit {
   display: inline-flex;
   align-items: center;

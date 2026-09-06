@@ -146,7 +146,19 @@ for (const file of readdirSync(biomeDir).filter(f => f.endsWith(".ts"))) {
     }
   }
   const trainerChance = Number(source.match(/trainerChance:\s*(\d+)/)?.[1] ?? 0);
-  parsed.set(key, { key, links, trainerChance, pool });
+  // Gym leaders come from the biome's boss-tier trainer pools (Arena.randomTrainerType with the boss roll).
+  const trainerMatch = source.match(/const trainerPool:\s*TrainerPools\s*=\s*(\{[\s\S]*?\n\});/);
+  const trainerPool = trainerMatch
+    ? JSON.parse(
+        trainerMatch[1]
+          .replace(/\/\/.*$/gm, "")
+          .replace(/\[BiomePoolTier\.([A-Z_]+)\]:/g, '"$1":')
+          .replace(/TrainerType\.([A-Z0-9_]+)/g, '"$1"')
+          .replace(/,\s*([\]}])/g, "$1"),
+      )
+    : {};
+  const gymLeaders = [...new Set(["BOSS", "BOSS_RARE", "BOSS_SUPER_RARE", "BOSS_ULTRA_RARE"].flatMap(t => trainerPool[t] ?? []))];
+  parsed.set(key, { key, links, trainerChance, pool, gymLeaders });
 }
 
 // ---------------------------------------------------------------------------
@@ -279,6 +291,74 @@ for (const file of readdirSync(speciesDir).filter(f => /^generation-\d+\.ts$/.te
   }
 }
 
+// ---------------------------------------------------------------------------
+// 5b. Trainer sprites for the planner: every biome's possible gym leaders, the
+//     rival, and each evil team's grunt and boss. Trainer atlases are small,
+//     so they are copied whole and the idle frame ("0001.png") is cut out with
+//     CSS, like the Pokémon icons.
+// ---------------------------------------------------------------------------
+const trainerNames = JSON.parse(readFileSync(join(root, "locales/en/trainer-names.json"), "utf8"));
+const trainerClasses = JSON.parse(readFileSync(join(root, "locales/en/trainer-classes.json"), "utf8"));
+const titleCase = key =>
+  key
+    .toLowerCase()
+    .split("_")
+    .map(w => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
+const trainerName = key => trainerNames[toCamelCase(key)] ?? trainerClasses[toCamelCase(key)] ?? titleCase(key);
+mkdirSync(join(here, "assets/trainers"), { recursive: true });
+const trainers = {};
+function addTrainerSprite(spriteKey, name) {
+  if (trainers[spriteKey]) {
+    return;
+  }
+  const jsonPath = join(root, `assets/images/trainer/${spriteKey}.json`);
+  if (!existsSync(jsonPath)) {
+    console.warn(`no trainer sprite for ${spriteKey}`);
+    return;
+  }
+  const texture = JSON.parse(readFileSync(jsonPath, "utf8")).textures[0];
+  const frame = texture.frames.find(f => f.filename === "0001.png") ?? texture.frames[0];
+  copyFileSync(join(root, `assets/images/trainer/${spriteKey}.png`), join(here, `assets/trainers/${spriteKey}.png`));
+  trainers[spriteKey] = {
+    name,
+    sprite: `assets/trainers/${spriteKey}.png`,
+    atlasW: texture.size.w,
+    atlasH: texture.size.h,
+    x: frame.frame.x,
+    y: frame.frame.y,
+    w: frame.frame.w,
+    h: frame.frame.h,
+  };
+}
+for (const entry of parsed.values()) {
+  for (const k of entry.gymLeaders) {
+    addTrainerSprite(k.toLowerCase(), trainerName(k));
+  }
+}
+// The rival is the opposite gender to the player; the default (male) player meets the female rival.
+addTrainerSprite("rival_f", trainerNames.rivalFemale ?? "Rival");
+addTrainerSprite("rival_m", trainerNames.rival ?? "Rival");
+// Evil teams in the order fixed-battle-configs.ts lists them, with their boss (EVIL_BOSS_1) and its display name.
+const TEAMS = [
+  ["rocket", "Team Rocket", "ROCKET_BOSS_GIOVANNI_1", "giovanni"],
+  ["magma", "Team Magma", "MAXIE", "maxie"],
+  ["aqua", "Team Aqua", "ARCHIE", "archie"],
+  ["galactic", "Team Galactic", "CYRUS", "cyrus"],
+  ["plasma", "Team Plasma", "GHETSIS", "ghetsis"],
+  ["flare", "Team Flare", "LYSANDRE", "lysandre"],
+  ["aether", "Aether Foundation", "LUSAMINE", "lusamine"],
+  ["skull", "Team Skull", "GUZMA", "guzma"],
+  ["macro", "Macro Cosmos", "ROSE", "rose"],
+  ["star", "Team Star", "PENNY", "penny"],
+];
+const teams = TEAMS.map(([team, name, bossType, bossName]) => {
+  const grunt = `${team}_grunt_m`;
+  addTrainerSprite(grunt, trainerClasses[toCamelCase(`${team}_grunt`)] ?? `${titleCase(team)} Grunt`);
+  addTrainerSprite(bossType.toLowerCase(), trainerNames[bossName] ?? titleCase(bossName));
+  return { key: team, name, grunt, boss: bossType.toLowerCase() };
+});
+
 const REGION_PREFIX = { ALOLA: "Alolan", GALAR: "Galarian", HISUI: "Hisuian", PALDEA: "Paldean" };
 function speciesName(key) {
   const base = pokemonNames[toCamelCase(key)];
@@ -355,6 +435,7 @@ for (const [key, id] of biomeIds) {
       pOffered: entry.links.length === 1 ? 1 : 1 / link.weight,
     })),
     pool: entry.pool,
+    gymLeaders: entry.gymLeaders,
   });
 }
 
@@ -398,6 +479,8 @@ const data = {
   },
   atlases: atlasFiles,
   species,
+  trainers,
+  teams,
   biomes,
   defaultWanted: defaultWanted.filter(k => speciesIds.has(k)),
   classic: {

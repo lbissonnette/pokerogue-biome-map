@@ -15,6 +15,7 @@ path = [
     "assets/items/**",
     "assets/ui/**",
     "assets/fonts/**",
+    "assets/trainers/**",
     "fonts.css",
 ]
 precedence = "aggregate"

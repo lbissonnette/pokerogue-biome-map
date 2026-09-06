@@ -222,7 +222,7 @@
     panel: "info",
     /** A highlighted route: [{ key, label }] in travel order, or null. */
     path: null,
-    planner: { wave: 1, biome: "TOWN", gym: "20", luck: 0, lures: 0, endless: false, option: null },
+    planner: { wave: 1, biome: "TOWN", gym: "20", luck: 0, lures: 0, endless: false, team: "rocket", option: null },
     view: { x: 0, y: 0, k: 1 },
   };
 
@@ -284,6 +284,8 @@
     el.style.top = `${pos.y}px`;
     el.setAttribute("aria-label", `${biome.name}: ${biome.links.length} exit${biome.links.length === 1 ? "" : "s"}`);
     el.innerHTML = `${thumbHtml(biome)}<span class="name">${biome.name}</span>${badgesHtml(biome.key)}<span class="stage"></span>`;
+    // Trainer sprites for a drawn route sit over the backdrop.
+    el.querySelector(".thumb").insertAdjacentHTML("beforeend", '<span class="visitors"></span>');
     el.addEventListener("click", () => {
       if (!suppressClick) {
         select(biome.key === state.selected ? null : biome.key);
@@ -492,13 +494,27 @@
     // A planned route lights up its cards (with the waves spent there) and the hops between them.
     const pathEdges = new Set();
     const pathLabels = new Map();
+    // Trainer sprites per card: one per trainer, with every wave they can appear on.
+    const pathSprites = new Map();
     if (state.path) {
       state.path.forEach((step, i) => {
-        // Each visit becomes "waves" plus a tag per trainer battle inside that stretch.
+        // The label above the card is the waves spent there; battles with a
+        // sprite go over the backdrop instead, and only the late-game battles
+        // without one (Elite Four, champion) stay as text tags.
         const html = `<span class="visit">${step.label}${(step.events ?? [])
+          .filter(ev => !ev.sprites?.length)
           .map(ev => `<i class="ev ${ev.kind}">${ev.label}</i>`)
           .join("")}</span>`;
         pathLabels.set(step.key, [...(pathLabels.get(step.key) ?? []), html]);
+        const sprites = pathSprites.get(step.key) ?? new Map();
+        for (const ev of step.events ?? []) {
+          for (const spriteKey of ev.sprites ?? []) {
+            const entry = sprites.get(spriteKey) ?? { kind: ev.kind, labels: [] };
+            entry.labels.push(ev.label);
+            sprites.set(spriteKey, entry);
+          }
+        }
+        pathSprites.set(step.key, sprites);
         if (i > 0) {
           pathEdges.add(`${state.path[i - 1].key}>${step.key}`);
         }
@@ -532,6 +548,11 @@
       el.classList.toggle("wanted-hit", wantedHits?.has(key) ?? false);
       el.classList.toggle("on-path", pathLabels.has(key));
       el.querySelector(".stage").innerHTML = (pathLabels.get(key) ?? []).join('<span class="sep">·</span>');
+      el.querySelector(".visitors").innerHTML = [...(pathSprites.get(key) ?? [])]
+        .map(([spriteKey, info]) =>
+          trainerSpriteHtml(spriteKey, 0.42, `${DATA.trainers[spriteKey].name} · ${[...new Set(info.labels)].join(", ")}`),
+        )
+        .join("");
     }
   }
 
@@ -922,7 +943,9 @@
     [/^ELITE_FOUR/, "e4", "Elite Four"],
     [/^CHAMPION/, "champion", "champion"],
   ];
-  function stretchEvents(sch, t) {
+  const currentTeam = () => (DATA.teams ?? []).find(tm => tm.key === state.planner.team) ?? DATA.teams?.[0];
+  /** Trainer battles inside stretch `t` of a route visiting `biomeKey`, each with the sprites that stand for it. */
+  function stretchEvents(sch, t, biomeKey) {
     if (state.planner.endless) {
       return [];
     }
@@ -930,16 +953,23 @@
     const last = sch.L * t;
     const events = [];
     if (sch.gymSet.has(last)) {
-      events.push({ kind: "gym", label: `gym ${last}`, wave: last });
+      // Which leader shows up is rolled from the biome's boss-tier trainer pool.
+      const leaders = (byKey.get(biomeKey)?.gymLeaders ?? []).map(k => k.toLowerCase()).filter(k => DATA.trainers?.[k]);
+      events.push({ kind: "gym", label: `gym ${last}`, wave: last, sprites: leaders });
     }
+    const team = currentTeam();
     for (const f of classic.fixedBattles ?? []) {
       if (f.wave < first || f.wave > last) {
         continue;
       }
       const match = FIXED_KINDS.find(([re]) => re.test(f.key));
-      if (match) {
-        events.push({ kind: match[1], label: `${match[2]} ${f.wave}`, wave: f.wave });
+      if (!match) {
+        continue;
       }
+      const kind = match[1];
+      const sprites =
+        kind === "rival" ? ["rival_f"] : kind === "team" ? [/^EVIL_BOSS/.test(f.key) ? team?.boss : team?.grunt].filter(Boolean) : [];
+      events.push({ kind, label: `${match[2]} ${f.wave}`, wave: f.wave, sprites: sprites.filter(k => DATA.trainers?.[k]) });
     }
     return events.sort((a, b) => a.wave - b.wave);
   }
@@ -947,8 +977,24 @@
   const pathStep = (sch, key, t, star) => ({
     key,
     label: star ? `★${sch.bossWaveOf(t)}` : stretchLabel(sch, t),
-    events: stretchEvents(sch, t),
+    events: stretchEvents(sch, t, key),
   });
+
+  /** A trainer's idle pose, cut from its atlas as a CSS sprite. */
+  function trainerSpriteHtml(spriteKey, scale, title) {
+    const tr = DATA.trainers?.[spriteKey];
+    if (!tr) {
+      return "";
+    }
+    const style = [
+      `width:${Math.round(tr.w * scale)}px`,
+      `height:${Math.round(tr.h * scale)}px`,
+      `background-image:url(${tr.sprite})`,
+      `background-position:-${tr.x * scale}px -${tr.y * scale}px`,
+      `background-size:${tr.atlasW * scale}px ${tr.atlasH * scale}px`,
+    ].join(";");
+    return `<span class="tsprite pixel" style="${style}" title="${title}"></span>`;
+  }
 
   function openPlanner(patch = {}) {
     Object.assign(state.planner, patch, { option: null });
@@ -991,8 +1037,8 @@
 
   function savePlanner() {
     try {
-      const { wave, biome, gym, luck, lures, endless } = state.planner;
-      localStorage.setItem("biome-map-planner", JSON.stringify({ wave, biome, gym, luck, lures, endless }));
+      const { wave, biome, gym, luck, lures, endless, team } = state.planner;
+      localStorage.setItem("biome-map-planner", JSON.stringify({ wave, biome, gym, luck, lures, endless, team }));
     } catch {
       // storage unavailable; nothing to do
     }
@@ -1009,6 +1055,7 @@
           luck: clampLuck(saved.luck),
           lures: clampLures(saved.lures),
           endless: saved.endless === true,
+          team: (DATA.teams ?? []).some(t => t.key === saved.team) ? saved.team : "rocket",
         });
       }
     } catch {
@@ -1442,7 +1489,7 @@
   }
 
   function renderPlanner() {
-    const { wave, biome, gym, luck, lures, endless } = state.planner;
+    const { wave, biome, gym, luck, lures, endless, team } = state.planner;
     const modeText = state.mode === "map" ? "odds you can steer that way with a Map" : "odds with no Map, when the game picks";
     const rules = endless
       ? "Endless mode. Biomes change after every 5th wave and every wave ending in 0 is a wild boss; there are no trainers, so nothing takes a boss slot. Every 50th wave is the End biome, and the biome after it is random, so the plan runs to the stretch before the next End. After wave 250 ordinary waves can also be bosses (2% per 50 waves past 250, up to 30%) — a bonus not counted here."
@@ -1472,6 +1519,9 @@
         </fieldset>
         <label title="Each shiny in your party adds its variant + 1 (a shiny fusion half adds the same again); the game caps it at 14">Luck <input type="number" id="plan-luck" min="0" max="14" value="${luck}"> <span class="luck-readout"><span class="luck-label">Luck:</span> <span id="plan-luck-grade">${luckHtml(luck)}</span></span></label>
         <label title="Lure, Super Lure and Max Lure each divide the double-battle roll by 4 while active; a double battle rolls two boss Pokémon">Lures <input type="number" id="plan-lures" min="0" max="3" value="${lures}"> <span class="muted small" id="plan-lures-note">boss wave doubles ${doubleText(true, lures)}</span></label>
+        <label id="plan-team-row"${endless ? " hidden" : ""} title="Rolled once per run at the first grunt battle on wave 35; set it once you have met them">Evil team <select id="plan-team">${(DATA.teams ?? [])
+          .map(tm => `<option value="${tm.key}"${tm.key === team ? " selected" : ""}>${tm.name}</option>`)
+          .join("")}</select></label>
       </form>
       <div id="plan-results"></div>`;
     $("#planner-back").addEventListener("click", () => {
@@ -1491,6 +1541,7 @@
         luck: clampLuck($("#plan-luck").value),
         lures: clampLures($("#plan-lures").value),
         endless: isEndless,
+        team: $("#plan-team")?.value ?? state.planner.team,
         option: null,
       });
       state.path = null;
@@ -1517,6 +1568,12 @@
       $("#plan-luck-grade").innerHTML = luckHtml(clampLuck($("#plan-luck").value));
     });
     $("#plan-lures").addEventListener("change", update);
+    $("#plan-team")?.addEventListener("change", () => {
+      update();
+      if (state.path) {
+        applyFocus(); // swap the team sprites on a drawn route
+      }
+    });
     $("#plan-lures").addEventListener("input", () => {
       $("#plan-lures-note").textContent = `boss wave doubles ${doubleText(true, clampLures($("#plan-lures").value))}`;
     });
