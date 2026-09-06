@@ -548,10 +548,26 @@
       el.classList.toggle("wanted-hit", wantedHits?.has(key) ?? false);
       el.classList.toggle("on-path", pathLabels.has(key));
       el.querySelector(".stage").innerHTML = (pathLabels.get(key) ?? []).join('<span class="sep">·</span>');
-      el.querySelector(".visitors").innerHTML = [...(pathSprites.get(key) ?? [])]
-        .map(([spriteKey, info]) =>
-          trainerSpriteHtml(spriteKey, 0.42, `${DATA.trainers[spriteKey].name} · ${[...new Set(info.labels)].join(", ")}`),
-        )
+      const sprites = pathSprites.get(key) ?? new Map();
+      el.querySelector(".visitors").innerHTML = [...sprites]
+        .map(([spriteKey, info]) => {
+          const waves = [...new Set(info.labels)].join(", ");
+          // Both rivals stand together, overlapping, since which one you get depends on your own gender.
+          if (spriteKey === "rival_m" && sprites.has("rival_f")) {
+            const m = DATA.trainers.rival_m;
+            const f = DATA.trainers.rival_f;
+            const title = `${m.name} / ${f.name} · ${waves}`;
+            return `<span class="tpair" style="width:${Math.round((m.w * 0.55 + f.w) * 0.42)}px;height:${Math.round(Math.max(m.h, f.h) * 0.42)}px">${trainerSpriteHtml(
+              "rival_m",
+              0.42,
+              title,
+            )}${trainerSpriteHtml("rival_f", 0.42, title)}</span>`;
+          }
+          if (spriteKey === "rival_f" && sprites.has("rival_m")) {
+            return "";
+          }
+          return trainerSpriteHtml(spriteKey, 0.42, `${DATA.trainers[spriteKey].name} · ${waves}`);
+        })
         .join("");
     }
   }
@@ -967,8 +983,9 @@
         continue;
       }
       const kind = match[1];
+      // The rival's gender is the opposite of the player's, so both are shown as a pair.
       const sprites =
-        kind === "rival" ? ["rival_f"] : kind === "team" ? [/^EVIL_BOSS/.test(f.key) ? team?.boss : team?.grunt].filter(Boolean) : [];
+        kind === "rival" ? ["rival_m", "rival_f"] : kind === "team" ? [/^EVIL_BOSS/.test(f.key) ? team?.boss : team?.grunt].filter(Boolean) : [];
       events.push({ kind, label: `${match[2]} ${f.wave}`, wave: f.wave, sprites: sprites.filter(k => DATA.trainers?.[k]) });
     }
     return events.sort((a, b) => a.wave - b.wave);

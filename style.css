@@ -607,6 +607,24 @@ button {
   pointer-events: auto;
 }
 
+/* The two rivals as one overlapping pair. */
+.tpair {
+  position: relative;
+  display: inline-block;
+  flex: none;
+}
+
+.tpair .tsprite {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+}
+
+.tpair .tsprite:last-child {
+  left: auto;
+  right: 0;
+}
+
 .plan-form label[hidden] {
   display: none;
 }
