@@ -41,7 +41,7 @@ the default branch. No build step is needed to serve it.
 ## Wanted Pokémon
 
 The "Wanted" strip above the map is editable in the page: type a name (or species key) in the box to add a
-Pokémon, use the × next to an entry to remove it, and "Reset" to go back to the defaults. The list is remembered
+Pokémon, use the × next to an entry to remove it, and "Clear" to empty the list. The list is remembered
 in the browser and mirrored into the URL as `#w=MEWTWO,GROUDON`, so a link carries it to someone else. Species
 show up as gold chips on the biome cards, in the strip (hover to highlight their biomes, click to jump there), in
 the side panel, and in the boss planner. A species that is in no wild pool is listed as egg-only.

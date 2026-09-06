@@ -1098,79 +1098,8 @@ button {
   border-color: var(--gold);
 }
 
-/* ------------------------------------------------------------------- table */
-
-.all-routes {
-  padding: 24px 20px 40px;
-  background: var(--ground-deep);
-  border-top: 2px solid var(--panel-edge);
-}
-
-.all-routes h2 {
-  font-weight: normal;
-  font-size: 26px;
-  color: var(--gold);
-  text-shadow: 2px 2px 0 var(--gold-shadow);
-  margin: 0 0 6px;
-}
-
-.all-routes p {
-  max-width: 900px;
-  font-size: 17px;
-}
-
-.all-routes .table-wrap {
-  overflow-x: auto;
-}
-
-.all-routes table {
-  border-collapse: collapse;
-  min-width: 640px;
-  font-size: 17px;
-}
-
-.all-routes th,
-.all-routes td {
-  padding: 4px 12px;
-  text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  white-space: nowrap;
-}
-
-.all-routes th {
-  color: var(--blue);
-  text-shadow: 1px 1px 0 var(--blue-shadow);
-  font-weight: normal;
-}
-
-.all-routes td.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.all-routes tr.first td {
-  border-top: 2px solid var(--panel-edge);
-}
-
-.all-routes td.src {
-  color: var(--gold);
-  text-shadow: 1px 1px 0 var(--gold-shadow);
-}
-
-.all-routes td img {
-  width: 40px;
-  height: 22.5px;
-  vertical-align: middle;
-  margin-right: 8px;
-  object-fit: cover;
-}
-
-.all-routes a.jump {
-  color: inherit;
-  text-shadow: inherit;
-}
-
 footer {
+  border-top: 2px solid var(--panel-edge);
   padding: 14px 20px 24px;
   font-size: 14px;
   color: var(--ink-muted);

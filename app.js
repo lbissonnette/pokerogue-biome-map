@@ -231,7 +231,6 @@
   const map = $("#map");
   const svg = $("#edges");
   const panel = $("#panel");
-  const tableBody = $("#routes-body");
 
   map.style.width = `${MAP_W}px`;
   map.style.height = `${MAP_H}px`;
@@ -602,11 +601,11 @@
         <button type="submit" class="btn">Add</button>
         <span class="add-msg" id="add-msg" aria-live="polite"></span>
       </form>
-      <button type="button" class="btn small-btn" id="reset-wanted" title="Back to the default list">Reset</button>
+      <button type="button" class="btn small-btn" id="reset-wanted" title="Remove every Pokémon from the list">Clear</button>
       <button type="button" class="btn planner-btn" id="open-planner">Boss planner</button>`;
 
     $("#open-planner").addEventListener("click", () => openPlanner());
-    $("#reset-wanted").addEventListener("click", () => setWanted(defaultWanted));
+    $("#reset-wanted").addEventListener("click", () => setWanted([]));
     const input = $("#add-wanted");
     const msg = $("#add-msg");
     $("#add-wanted-form").addEventListener("submit", e => {
@@ -1536,24 +1535,6 @@
         .join("")}`;
   }
 
-  // ------------------------------------------------------------ table
-  function renderTable() {
-    const rows = [];
-    for (const biome of biomes) {
-      biome.links.forEach((link, i) => {
-        const target = byKey.get(link.to);
-        rows.push(`<tr class="${i === 0 ? "first" : ""}">
-          <td class="src">${i === 0 ? `<a class="jump" href="#${biome.key}"><img class="pixel" src="${biome.art.bg ?? ""}" alt="">${biome.name}</a>` : ""}</td>
-          <td><a class="jump" href="#${target.key}"><img class="pixel" src="${target.art.bg ?? ""}" alt="">${target.name}</a></td>
-          <td class="num">${pct(link.p)}</td>
-          <td class="num">${link.pExact}</td>
-          <td class="num">${pct(link.pOffered)}</td>
-          <td>${rollText(link, biome.links.length)}</td>
-        </tr>`);
-      });
-    }
-    tableBody.innerHTML = rows.join("");
-  }
 
   // ------------------------------------------------------------ pan & zoom
   function applyView() {
@@ -1702,7 +1683,6 @@
   // ------------------------------------------------------------ boot
   map.classList.add("show-labels");
   loadPlanner();
-  renderTable();
   refreshEdges();
   renderPanel();
   fitView();
