@@ -63,7 +63,9 @@ are shown when holding a Map: "Best bet" maximises the chance of at least one wa
 maximises the expected number of wanted boss waves, and "No rolls" only uses always-offered exits. Each shows the
 main line (the path when every preferred roll succeeds), how often that line holds, the exact overall chance of at
 least one wanted roll counting the backups, and, at every roll on the main line, the concrete backup route. Without
-a Map the game picks the exit, so a single "what to expect" plan is shown. Below that,
+a Map the game picks the exit, so a single "what to expect" plan is shown. Drawing any route on the map labels
+each card with the waves spent there and tags the trainer battles that fall inside them (gym leader, rival, evil
+team, Elite Four, champion, from `ClassicFixedBossWaves` and the gym-leader rule). Below that,
 "One target at a time" lists, for every wanted Pokémon, the wild boss waves you can still reach in its biome and
 the most likely route to each. Click any route to draw it on the map with the waves you would spend in each biome.
 

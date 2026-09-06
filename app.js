@@ -494,7 +494,11 @@
     const pathLabels = new Map();
     if (state.path) {
       state.path.forEach((step, i) => {
-        pathLabels.set(step.key, [...(pathLabels.get(step.key) ?? []), step.label]);
+        // Each visit becomes "waves" plus a tag per trainer battle inside that stretch.
+        const html = `<span class="visit">${step.label}${(step.events ?? [])
+          .map(ev => `<i class="ev ${ev.kind}">${ev.label}</i>`)
+          .join("")}</span>`;
+        pathLabels.set(step.key, [...(pathLabels.get(step.key) ?? []), html]);
         if (i > 0) {
           pathEdges.add(`${state.path[i - 1].key}>${step.key}`);
         }
@@ -527,7 +531,7 @@
       el.classList.toggle("neighbor", neighbors.has(key));
       el.classList.toggle("wanted-hit", wantedHits?.has(key) ?? false);
       el.classList.toggle("on-path", pathLabels.has(key));
-      el.querySelector(".stage").textContent = (pathLabels.get(key) ?? []).join(" · ");
+      el.querySelector(".stage").innerHTML = (pathLabels.get(key) ?? []).join('<span class="sep">·</span>');
     }
   }
 
@@ -909,6 +913,43 @@
   }
   const stretchLabel = (sch, t) => `${sch.L * t - (sch.L - 1)}–${sch.L * t}`;
 
+  // Trainer battles that land inside a stretch, for marking on drawn routes:
+  // the gym leader (by seed), and Classic's fixed battles by kind.
+  const FIXED_KINDS = [
+    [/^RIVAL/, "rival", "rival"],
+    [/^EVIL_BOSS/, "team", "team boss"],
+    [/^EVIL/, "team", "team"],
+    [/^ELITE_FOUR/, "e4", "Elite Four"],
+    [/^CHAMPION/, "champion", "champion"],
+  ];
+  function stretchEvents(sch, t) {
+    if (state.planner.endless) {
+      return [];
+    }
+    const first = sch.L * t - (sch.L - 1);
+    const last = sch.L * t;
+    const events = [];
+    if (sch.gymSet.has(last)) {
+      events.push({ kind: "gym", label: `gym ${last}`, wave: last });
+    }
+    for (const f of classic.fixedBattles ?? []) {
+      if (f.wave < first || f.wave > last) {
+        continue;
+      }
+      const match = FIXED_KINDS.find(([re]) => re.test(f.key));
+      if (match) {
+        events.push({ kind: match[1], label: `${match[2]} ${f.wave}`, wave: f.wave });
+      }
+    }
+    return events.sort((a, b) => a.wave - b.wave);
+  }
+  /** A drawn-route step for biome `key` at stretch `t`; `star` marks a wanted boss wave. */
+  const pathStep = (sch, key, t, star) => ({
+    key,
+    label: star ? `★${sch.bossWaveOf(t)}` : stretchLabel(sch, t),
+    events: stretchEvents(sch, t),
+  });
+
   function openPlanner(patch = {}) {
     Object.assign(state.planner, patch, { option: null });
     state.panel = "planner";
@@ -1114,10 +1155,7 @@
 
   function showRoute(option) {
     const sch = schedule();
-    state.path = option.keys.map((key, j) => {
-      const t = sch.s + j;
-      return { key, label: j === option.hops ? `★${sch.bossWaveOf(t)}` : stretchLabel(sch, t) };
-    });
+    state.path = option.keys.map((key, j) => pathStep(sch, key, sch.s + j, j === option.hops));
     applyFocus();
     fitView();
   }
@@ -1397,8 +1435,7 @@
     state.path = route.keys.slice(0, route.lastHitIndex + 1).map((key, j) => {
       const t = sch.s + j;
       const w = sch.bossWaveOf(t);
-      const hit = w != null && route.hits.some(h => h.wave === w);
-      return { key, label: hit ? `★${w}` : `${stretchLabel(sch, t)}${w != null && sch.gymSet.has(w) ? " gym" : ""}` };
+      return pathStep(sch, key, t, w != null && route.hits.some(h => h.wave === w));
     });
     applyFocus();
     fitView();
@@ -1576,6 +1613,18 @@
         <div class="wave-chips">${bossWaves
           .map(b => `<span class="wave-chip${b.gym ? " gym" : b.blocked ? " gym" : ""}" title="${b.gym ? "gym leader" : b.blocked ? "fixed battle" : "wild boss"}">${b.wave}</span>`)
           .join("")}${isEndless ? `<span class="wave-chip end" title="End biome; the biome after it is random">End ${sch.nextEnd}</span>` : ""}</div>
+        ${(() => {
+          if (isEndless) {
+            return "";
+          }
+          const ahead = [];
+          for (let t = s; t <= sch.S + 2; t++) {
+            ahead.push(...stretchEvents(sch, t).filter(ev => ev.wave >= state.planner.wave));
+          }
+          return ahead.length
+            ? `<p class="small">Trainer battles ahead: ${ahead.map(ev => `<i class="ev ${ev.kind}">${ev.label}</i>`).join(" ")}</p>`
+            : "";
+        })()}
         <p class="muted small">Percentages are the ${modeText}, multiplied along the route. Click a route to draw it on the map.${
           isEndless ? "" : " Not sure which gym set you have? The first gym leader is on wave 20 or 30."
         }</p>

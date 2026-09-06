@@ -583,7 +583,55 @@ button {
 }
 
 .node.on-path .stage {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.stage .visit {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.stage .sep {
+  opacity: 0.6;
+}
+
+/* Trainer battles inside a stretch: gym leader, rival, evil team, Elite Four, champion. */
+.ev {
+  display: inline-block;
+  padding: 0 4px;
+  font-style: normal;
+  font-size: 11px;
+  line-height: 13px;
+  background: #241f2b;
+  border: 1px solid currentColor;
+  text-shadow: none;
+  white-space: nowrap;
+}
+
+.ev.gym {
+  color: var(--pink);
+}
+
+.ev.rival {
+  color: var(--blue);
+}
+
+.ev.team {
+  color: var(--red);
+}
+
+.ev.e4,
+.ev.champion {
+  color: #e331c5;
+}
+
+.panel p .ev {
+  font-size: 13px;
+  line-height: 16px;
+  margin-right: 2px;
 }
 
 .node.on-path {

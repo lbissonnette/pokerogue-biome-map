@@ -368,9 +368,10 @@ for (const [src, dst] of [
 
 // Classic-mode schedule, for the route planner (src/enums/fixed-boss-waves.ts,
 // GameMode.isWaveTrainer: gym leaders sit on waves ≡ 20 or ≡ 0 mod 30 depending on the run seed).
-const fixedBattleWaves = [...readFileSync(join(root, "src/enums/fixed-boss-waves.ts"), "utf8").matchAll(/=\s*(\d+)/g)].map(
-  m => Number(m[1]),
+const fixedBattles = [...readFileSync(join(root, "src/enums/fixed-boss-waves.ts"), "utf8").matchAll(/^\s*([A-Z0-9_]+)\s*=\s*(\d+)/gm)].map(
+  m => ({ key: m[1], wave: Number(m[2]) }),
 );
+const fixedBattleWaves = fixedBattles.map(f => f.wave);
 
 const data = {
   generatedAt: new Date().toISOString(),
@@ -402,6 +403,8 @@ const data = {
   classic: {
     finalWave: 200,
     fixedBattleWaves,
+    /** The same waves with their ClassicFixedBossWaves names (RIVAL_2, EVIL_GRUNT_1, ELITE_FOUR_1, CHAMPION, …). */
+    fixedBattles,
     gymWaves: { 20: [20, 50, 80, 110, 140, 170], 30: [30, 60, 90, 120, 150, 180] },
   },
 };
