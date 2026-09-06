@@ -352,12 +352,17 @@ const TEAMS = [
   ["macro", "Macro Cosmos", "ROSE", "rose"],
   ["star", "Team Star", "PENNY", "penny"],
 ];
-const teams = TEAMS.map(([team, name, bossType, bossName]) => {
-  const grunt = `${team}_grunt_m`;
-  addTrainerSprite(grunt, trainerClasses[toCamelCase(`${team}_grunt`)] ?? `${titleCase(team)} Grunt`);
-  addTrainerSprite(bossType.toLowerCase(), trainerNames[bossName] ?? titleCase(bossName));
-  return { key: team, name, grunt, boss: bossType.toLowerCase() };
-});
+// Until the run has revealed its team, the game's own "unknown trainer" silhouette stands in for it.
+addTrainerSprite("unknown_m", "Unknown trainer");
+const teams = [
+  { key: "unknown", name: "Not sure yet", grunt: "unknown_m", boss: "unknown_m" },
+  ...TEAMS.map(([team, name, bossType, bossName]) => {
+    const grunt = `${team}_grunt_m`;
+    addTrainerSprite(grunt, trainerClasses[toCamelCase(`${team}_grunt`)] ?? `${titleCase(team)} Grunt`);
+    addTrainerSprite(bossType.toLowerCase(), trainerNames[bossName] ?? titleCase(bossName));
+    return { key: team, name, grunt, boss: bossType.toLowerCase() };
+  }),
+];
 
 const REGION_PREFIX = { ALOLA: "Alolan", GALAR: "Galarian", HISUI: "Hisuian", PALDEA: "Paldean" };
 function speciesName(key) {

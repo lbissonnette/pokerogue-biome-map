@@ -222,7 +222,7 @@
     panel: "info",
     /** A highlighted route: [{ key, label }] in travel order, or null. */
     path: null,
-    planner: { wave: 1, biome: "TOWN", gym: "20", luck: 0, lures: 0, endless: false, team: "rocket", option: null },
+    planner: { wave: 1, biome: "TOWN", gym: "20", luck: 0, lures: 0, endless: false, team: "unknown", option: null },
     view: { x: 0, y: 0, k: 1 },
   };
 
@@ -509,9 +509,11 @@
         const sprites = pathSprites.get(step.key) ?? new Map();
         for (const ev of step.events ?? []) {
           for (const spriteKey of ev.sprites ?? []) {
-            const entry = sprites.get(spriteKey) ?? { kind: ev.kind, labels: [] };
+            // A team boss keeps its own entry even when it shares the silhouette with the grunts.
+            const id = ev.boss ? `${spriteKey}#boss` : spriteKey;
+            const entry = sprites.get(id) ?? { spriteKey, kind: ev.kind, boss: !!ev.boss, labels: [] };
             entry.labels.push(ev.label);
-            sprites.set(spriteKey, entry);
+            sprites.set(id, entry);
           }
         }
         pathSprites.set(step.key, sprites);
@@ -550,7 +552,8 @@
       el.querySelector(".stage").innerHTML = (pathLabels.get(key) ?? []).join('<span class="sep">·</span>');
       const sprites = pathSprites.get(key) ?? new Map();
       el.querySelector(".visitors").innerHTML = [...sprites]
-        .map(([spriteKey, info]) => {
+        .map(([, info]) => {
+          const spriteKey = info.spriteKey;
           const waves = [...new Set(info.labels)].join(", ");
           // Both rivals stand together, overlapping, since which one you get depends on your own gender.
           if (spriteKey === "rival_m" && sprites.has("rival_f")) {
@@ -566,7 +569,7 @@
           if (spriteKey === "rival_f" && sprites.has("rival_m")) {
             return "";
           }
-          return trainerSpriteHtml(spriteKey, 0.42, `${DATA.trainers[spriteKey].name} · ${waves}`);
+          return trainerSpriteHtml(spriteKey, 0.42, `${DATA.trainers[spriteKey].name} · ${waves}`, info.boss ? "boss" : "");
         })
         .join("");
     }
@@ -983,10 +986,10 @@
         continue;
       }
       const kind = match[1];
+      const boss = kind === "team" && /^EVIL_BOSS/.test(f.key);
       // The rival's gender is the opposite of the player's, so both are shown as a pair.
-      const sprites =
-        kind === "rival" ? ["rival_m", "rival_f"] : kind === "team" ? [/^EVIL_BOSS/.test(f.key) ? team?.boss : team?.grunt].filter(Boolean) : [];
-      events.push({ kind, label: `${match[2]} ${f.wave}`, wave: f.wave, sprites: sprites.filter(k => DATA.trainers?.[k]) });
+      const sprites = kind === "rival" ? ["rival_m", "rival_f"] : kind === "team" ? [boss ? team?.boss : team?.grunt].filter(Boolean) : [];
+      events.push({ kind, boss, label: `${match[2]} ${f.wave}`, wave: f.wave, sprites: sprites.filter(k => DATA.trainers?.[k]) });
     }
     return events.sort((a, b) => a.wave - b.wave);
   }
@@ -998,7 +1001,7 @@
   });
 
   /** A trainer's idle pose, cut from its atlas as a CSS sprite. */
-  function trainerSpriteHtml(spriteKey, scale, title) {
+  function trainerSpriteHtml(spriteKey, scale, title, extraClass = "") {
     const tr = DATA.trainers?.[spriteKey];
     if (!tr) {
       return "";
@@ -1010,7 +1013,7 @@
       `background-position:-${tr.x * scale}px -${tr.y * scale}px`,
       `background-size:${tr.atlasW * scale}px ${tr.atlasH * scale}px`,
     ].join(";");
-    return `<span class="tsprite pixel" style="${style}" title="${title}"></span>`;
+    return `<span class="tsprite pixel${extraClass ? ` ${extraClass}` : ""}" style="${style}" title="${title}"></span>`;
   }
 
   function openPlanner(patch = {}) {
@@ -1072,7 +1075,7 @@
           luck: clampLuck(saved.luck),
           lures: clampLures(saved.lures),
           endless: saved.endless === true,
-          team: (DATA.teams ?? []).some(t => t.key === saved.team) ? saved.team : "rocket",
+          team: (DATA.teams ?? []).some(t => t.key === saved.team) ? saved.team : "unknown",
         });
       }
     } catch {
@@ -1586,9 +1589,15 @@
     });
     $("#plan-lures").addEventListener("change", update);
     $("#plan-team")?.addEventListener("change", () => {
+      // Changing the team only swaps sprites, so keep whatever route is drawn.
+      const keep = { path: state.path, option: state.planner.option };
       update();
-      if (state.path) {
-        applyFocus(); // swap the team sprites on a drawn route
+      if (keep.path) {
+        const sch = schedule();
+        state.path = keep.path.map((step, j) => ({ ...step, events: stretchEvents(sch, sch.s + j, step.key) }));
+        state.planner.option = keep.option;
+        renderPlanResults();
+        applyFocus();
       }
     });
     $("#plan-lures").addEventListener("input", () => {

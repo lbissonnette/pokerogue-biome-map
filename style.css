@@ -607,6 +607,11 @@ button {
   pointer-events: auto;
 }
 
+/* The evil team's boss gets a gold outline, so the silhouette can tell a boss wave from a grunt wave. */
+.tsprite.boss {
+  filter: drop-shadow(0 0 1px var(--gold)) drop-shadow(0 0 1px var(--gold)) drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.85));
+}
+
 /* The two rivals as one overlapping pair. */
 .tpair {
   position: relative;

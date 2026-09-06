@@ -67,7 +67,8 @@ a Map the game picks the exit, so a single "what to expect" plan is shown. Drawi
 each card with the waves spent there and stands the trainers you will meet on the backdrop: the biome's possible
 gym leaders (its boss-tier trainer pool) on gym waves, the rival, and the evil team's grunt and boss on their fixed
 waves (`ClassicFixedBossWaves`). The team is rolled once per run at wave 35, so the planner has an "Evil team"
-selector; the Elite Four and champion stay as text tags. Below that,
+selector; until it is set, the game's unknown-trainer silhouette stands in for the team, with a gold outline on the
+boss wave. The Elite Four and champion stay as text tags. Below that,
 "One target at a time" lists, for every wanted Pokémon, the wild boss waves you can still reach in its biome and
 the most likely route to each. Click any route to draw it on the map with the waves you would spend in each biome.
 
