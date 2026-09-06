@@ -56,10 +56,14 @@ Plans boss waves only: a Pokémon that appears solely on ordinary wild waves is 
 
 Open it from the "Boss planner" button in the Wanted strip (or "I'm here" on a biome). Enter your wave, your
 current biome and which waves your run's gym leaders fall on (20/50/80… or 30/60/90…, decided by the run seed).
-"Best full routes" lists whole-run routes to wave 180 as a trade-off curve: for each number of free boss waves
-spent where a wanted Pokémon can roll, the most likely route to get them (under the current odds mode), keeping
-only routes that are more likely than every route with more boss waves. Each shows the chance of holding the route
-and the overall chance of rolling at least one wanted Pokémon, which also accounts for the route breaking. Below that,
+"Best plans" treats the run as a policy rather than a fixed path: at every biome the plan ranks the exits and takes
+the best one that is actually offered, so a failed roll leads to the next-best exit instead of ending the plan. The
+values are solved backwards over every kept-exit outcome, which folds all the backups into the odds. Three plans
+are shown when holding a Map: "Best bet" maximises the chance of at least one wanted roll, "Most boss waves"
+maximises the expected number of wanted boss waves, and "No rolls" only uses always-offered exits. Each shows the
+main line (the path when every preferred roll succeeds), how often that line holds, the exact overall chance of at
+least one wanted roll counting the backups, and, at every roll on the main line, the concrete backup route. Without
+a Map the game picks the exit, so a single "what to expect" plan is shown. Below that,
 "One target at a time" lists, for every wanted Pokémon, the wild boss waves you can still reach in its biome and
 the most likely route to each. Click any route to draw it on the map with the waves you would spend in each biome.
 

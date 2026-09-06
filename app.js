@@ -1150,18 +1150,23 @@
 
   const fmtChance = p => (p >= 0.01 ? pct(p) : p > 0 ? `1 in ${Math.round(1 / p).toLocaleString()}` : "0%");
 
-  // Whole-run search: walk every remaining stretch and count the free boss
-  // waves a route spends in a biome holding a wanted species (once that
-  // species can roll). Each (stretch, biome) state keeps, for every hit count,
-  // its few most likely routes (one per distinct set of hits) under the
-  // current odds mode. That is exact per hit count: a prefix that is more
-  // likely with the same hits stays more likely under the same continuation.
-  // The result is the trade-off curve — for each number of boss waves, the
-  // most likely way to get them — with dominated entries dropped.
-  function bestFullRoutes({ perCount = 3, showPerCount = 2 } = {}) {
-    const { biome } = state.planner;
+  // Whole-run planning as a policy rather than a fixed path. At every biome
+  // the player (holding a Map) sees which exits were kept and takes the best
+  // of them, so a failed roll is not the end of the plan — the next-best exit
+  // is the backup. The value of a state (stretch, biome) is computed backwards
+  // over every kept-exit outcome, which folds all the backups into the odds:
+  //   Q  = chance of rolling *no* wanted Pokémon from here on (minimised)
+  //   V  = expected number of wanted boss waves from here on (maximised)
+  //   Vs = the same, allowed to use always-offered exits only
+  // Each objective gives a ranking of exits per state; the "main line" is the
+  // path taken when every preferred roll succeeds, and the first fallback at
+  // each roll is shown as the backup. Without a Map the game picks, so the
+  // transition is just averaged and the main line is the most likely path.
+  function solvePlans() {
+    const { biome: start } = state.planner;
     const sch = schedule();
     const { s, S, gymSet } = sch;
+    const useMap = state.mode === "map";
     const speciesAt = new Map();
     for (const species of wanted) {
       for (const spot of species.spots) {
@@ -1173,100 +1178,219 @@
         }
       }
     }
-    const hitAt = (key, t) => {
-      const w = sch.bossWaveOf(t);
-      if (w == null || sch.blocked(w)) {
-        return null;
-      }
-      const list = [...(speciesAt.get(key) ?? [])].filter(sp => w >= sp.minWave);
-      return list.length ? { wave: w, biome: key, species: list } : null;
-    };
-    const withHit = (route, key, t) => {
-      const hit = hitAt(key, t);
-      return hit
-        ? {
-            ...route,
-            // reachProb: chance the route has held up to this boss wave.
-            hits: [...route.hits, { ...hit, reachProb: route.prob }],
-            sig: `${route.sig}${hit.wave}:${key};`,
-            probAtLastHit: route.prob,
-            lastHitIndex: route.keys.length - 1,
+    const hitMemo = new Map();
+    /** The wanted boss wave at (stretch t, biome), with its roll odds, or null. */
+    const hit = (t, key) => {
+      const id = `${t}:${key}`;
+      if (!hitMemo.has(id)) {
+        const w = sch.bossWaveOf(t);
+        let value = null;
+        if (w != null && !sch.blocked(w)) {
+          const list = [...(speciesAt.get(key) ?? [])].filter(sp => w >= sp.minWave);
+          if (list.length) {
+            value = { wave: w, biome: key, species: list, odds: hitOdds(list, key) };
           }
-        : route;
-    };
-    /** Best `limit` routes per hit count, one per distinct set of hits, most likely first. */
-    const prune = (routes, limit) => {
-      const byCount = new Map();
-      for (const r of routes) {
-        const bySig = byCount.get(r.hits.length) ?? new Map();
-        if (!bySig.has(r.sig) || bySig.get(r.sig).prob < r.prob) {
-          bySig.set(r.sig, r);
         }
-        byCount.set(r.hits.length, bySig);
+        hitMemo.set(id, value);
       }
-      return [...byCount.values()].flatMap(bySig => [...bySig.values()].sort((a, b) => b.prob - a.prob).slice(0, limit));
+      return hitMemo.get(id);
     };
+    const linksOf = key => byKey.get(key)?.links ?? [];
+    /** Every kept-exit outcome of leaving `key`: [{ p, links }]. A lone exit is always taken. */
+    const outcomesMemo = new Map();
+    const outcomes = key => {
+      if (!outcomesMemo.has(key)) {
+        const links = linksOf(key);
+        const list = [];
+        if (links.length === 1) {
+          list.push({ p: 1, links: [links[0]] });
+        } else {
+          for (let mask = 1; mask < 1 << links.length; mask++) {
+            let p = 1;
+            const kept = [];
+            links.forEach((l, i) => {
+              const keep = 1 / l.weight;
+              if (mask & (1 << i)) {
+                p *= keep;
+                kept.push(l);
+              } else {
+                p *= 1 - keep;
+              }
+            });
+            if (p > 0) {
+              list.push({ p, links: kept });
+            }
+          }
+        }
+        outcomesMemo.set(key, list);
+      }
+      return outcomesMemo.get(key);
+    };
+    const stepProb = (link, links) => (useMap ? (links.length === 1 ? 1 : 1 / link.weight) : link.p);
+    const keys = biomes.map(b => b.key);
 
-    let layer = new Map([[biome, [withHit({ keys: [biome], prob: 1, hits: [], sig: "", probAtLastHit: 1, lastHitIndex: -1 }, biome, s)]]]);
-    for (let t = s + 1; t <= S; t++) {
-      const next = new Map();
-      for (const [from, routes] of layer) {
-        for (const link of byKey.get(from)?.links ?? []) {
-          const q = chance(link);
-          if (q <= 0) {
+    // Optimal values, backwards from the last stretch.
+    const Q = [];
+    const V = [];
+    const Vs = [];
+    for (let t = S; t >= s; t--) {
+      const i = t - s;
+      Q[i] = new Map();
+      V[i] = new Map();
+      Vs[i] = new Map();
+      for (const key of keys) {
+        const h = hit(t, key);
+        const miss = h ? 1 - h.odds : 1;
+        const c = h ? 1 : 0;
+        const links = linksOf(key);
+        if (t === S || links.length === 0) {
+          Q[i].set(key, miss);
+          V[i].set(key, c);
+          Vs[i].set(key, c);
+          continue;
+        }
+        let eq = 0;
+        let ev = 0;
+        if (useMap) {
+          for (const o of outcomes(key)) {
+            eq += o.p * Math.min(...o.links.map(l => Q[i + 1].get(l.to)));
+            ev += o.p * Math.max(...o.links.map(l => V[i + 1].get(l.to)));
+          }
+        } else {
+          for (const l of links) {
+            eq += l.p * Q[i + 1].get(l.to);
+            ev += l.p * V[i + 1].get(l.to);
+          }
+        }
+        const sure = links.length === 1 ? links : links.filter(l => l.weight === 1);
+        Q[i].set(key, miss * eq);
+        V[i].set(key, c + ev);
+        Vs[i].set(key, c + (sure.length ? Math.max(...sure.map(l => Vs[i + 1].get(l.to))) : 0));
+      }
+    }
+    const at = (table, t, key) => (t - s < table.length ? table[t - s].get(key) : 0);
+
+    // Exit rankings per objective (best first).
+    const rankCatch = (t, key) =>
+      [...linksOf(key)].sort((a, b) => at(Q, t + 1, a.to) - at(Q, t + 1, b.to) || at(V, t + 1, b.to) - at(V, t + 1, a.to));
+    const rankCount = (t, key) =>
+      [...linksOf(key)].sort((a, b) => at(V, t + 1, b.to) - at(V, t + 1, a.to) || at(Q, t + 1, a.to) - at(Q, t + 1, b.to));
+    const rankSafe = (t, key) => {
+      const links = linksOf(key);
+      const sure = links.length === 1 ? links : links.filter(l => l.weight === 1);
+      const rolled = links.filter(l => !sure.includes(l));
+      return [...sure.sort((a, b) => at(Vs, t + 1, b.to) - at(Vs, t + 1, a.to)), ...rolled];
+    };
+    const rankLikely = (t, key) => [...linksOf(key)].sort((a, b) => b.p - a.p);
+
+    /** Exact odds of a ranking policy: chance of at least one wanted roll, and expected wanted boss waves. */
+    const evaluate = rank => {
+      const Qp = [];
+      const Cp = [];
+      for (let t = S; t >= s; t--) {
+        const i = t - s;
+        Qp[i] = new Map();
+        Cp[i] = new Map();
+        for (const key of keys) {
+          const h = hit(t, key);
+          const miss = h ? 1 - h.odds : 1;
+          const c = h ? 1 : 0;
+          const links = linksOf(key);
+          if (t === S || links.length === 0) {
+            Qp[i].set(key, miss);
+            Cp[i].set(key, c);
             continue;
           }
-          const bucket = next.get(link.to) ?? [];
-          for (const r of routes) {
-            bucket.push(withHit({ ...r, keys: [...r.keys, link.to], prob: r.prob * q }, link.to, t));
+          let eq = 0;
+          let ec = 0;
+          if (useMap) {
+            const order = rank(t, key);
+            for (const o of outcomes(key)) {
+              const pick = order.find(l => o.links.includes(l));
+              eq += o.p * Qp[i + 1].get(pick.to);
+              ec += o.p * Cp[i + 1].get(pick.to);
+            }
+          } else {
+            for (const l of links) {
+              eq += l.p * Qp[i + 1].get(l.to);
+              ec += l.p * Cp[i + 1].get(l.to);
+            }
           }
-          next.set(link.to, bucket);
+          Qp[i].set(key, miss * eq);
+          Cp[i].set(key, c + ec);
         }
       }
-      layer = new Map([...next].map(([key, routes]) => [key, prune(routes, perCount)]));
-    }
-    // Trade-off curve: most boss waves first; a route with fewer boss waves is
-    // only worth listing when it is strictly more likely than everything above it.
-    const candidates = prune(
-      [...layer.values()].flat().filter(r => r.hits.length > 0),
-      showPerCount,
-    ).sort((a, b) => b.hits.length - a.hits.length || b.probAtLastHit - a.probAtLastHit);
-    const routes = [];
-    let bestAbove = 0; // most likely route among those with strictly more boss waves
-    let bestInCount = 0;
-    let currentCount = null;
-    for (const r of candidates) {
-      if (r.hits.length !== currentCount) {
-        bestAbove = Math.max(bestAbove, bestInCount);
-        bestInCount = 0;
-        currentCount = r.hits.length;
+      return { atLeastOne: 1 - Qp[0].get(start), expectedHits: Cp[0].get(start) };
+    };
+
+    /** Follows a ranking's first choice from (t0, key), returning the biome keys visited through stretch S. */
+    const follow = (key, t0, rank) => {
+      const path = [key];
+      for (let t = t0; t < S; t++) {
+        const order = rank(t, key);
+        if (!order.length) {
+          break;
+        }
+        key = order[0].to;
+        path.push(key);
       }
-      if (r.probAtLastHit > bestAbove) {
-        routes.push(r);
-      }
-      bestInCount = Math.max(bestInCount, r.probAtLastHit);
-    }
-    for (const r of routes) {
-      // Chance of rolling at least one wanted Pokémon, counting the chance the
-      // route breaks between boss waves (after a break, later hits are lost).
-      let none = 1 - (r.hits[0]?.reachProb ?? 0);
-      let missAll = 1;
-      r.hits.forEach((h, i) => {
-        const odds = hitOdds(h.species, h.biome);
-        missAll *= 1 - odds;
-        const holdsToNext = r.hits[i + 1]?.reachProb ?? 0;
-        none += (h.reachProb - holdsToNext) * missAll;
+      return path;
+    };
+    /** Decorates a keys array (starting at stretch s) with its hits, for display and drawing. */
+    const annotate = keys => {
+      const hits = [];
+      let lastHitIndex = -1;
+      keys.forEach((key, j) => {
+        const h = hit(s + j, key);
+        if (h) {
+          hits.push(h);
+          lastHitIndex = j;
+        }
       });
-      r.atLeastOne = 1 - none;
-      r.atLeastOneIfHeld = 1 - missAll;
+      return { keys, hits, lastHitIndex, ifHeld: 1 - hits.reduce((m, h) => m * (1 - h.odds), 1) };
+    };
+
+    const buildPlan = (id, label, rank) => {
+      const primary = annotate(follow(start, s, rank));
+      // Chance the main line is actually followed through its last wanted boss wave.
+      let hold = 1;
+      const backups = [];
+      for (let j = 0; j < primary.keys.length - 1; j++) {
+        const t = s + j;
+        const key = primary.keys[j];
+        const links = linksOf(key);
+        const chosen = links.find(l => l.to === primary.keys[j + 1]);
+        if (!chosen) {
+          break;
+        }
+        if (j < primary.lastHitIndex) {
+          hold *= stepProb(chosen, links);
+        }
+        if (useMap && links.length > 1 && chosen.weight > 1) {
+          const alt = rank(t, key).find(l => l !== chosen && l.weight === 1);
+          if (alt && j <= primary.lastHitIndex) {
+            const continuation = follow(alt.to, t + 1, rank);
+            backups.push({ branchIndex: j, missing: chosen.to, ...annotate([...primary.keys.slice(0, j + 1), ...continuation]) });
+          }
+        }
+      }
+      return { id, labels: [label], rank, primary, hold, backups, ...evaluate(rank) };
+    };
+
+    const plans = useMap
+      ? [buildPlan("catch", "Best bet", rankCatch), buildPlan("count", "Most boss waves", rankCount), buildPlan("safe", "No rolls", rankSafe)]
+      : [buildPlan("likely", "What to expect", rankLikely)];
+    // Plans that turn out to be the same line are shown once.
+    const merged = [];
+    for (const plan of plans) {
+      const same = merged.find(m => m.primary.keys.join() === plan.primary.keys.join());
+      if (same) {
+        same.labels.push(...plan.labels);
+      } else {
+        merged.push(plan);
+      }
     }
-    const bestBet = Math.max(0, ...routes.map(r => r.atLeastOne));
-    for (const r of routes) {
-      r.bestBet = r.atLeastOne === bestBet;
-    }
-    // Safest first: the reader trades certainty for extra boss waves as they go down.
-    routes.sort((a, b) => b.probAtLastHit - a.probAtLastHit || b.hits.length - a.hits.length);
-    return { sch, s, gymSet, routes };
+    return { sch, s, gymSet, plans: merged.filter(p => p.expectedHits > 0) };
   }
 
   function showFullRoute(route, sch) {
@@ -1388,34 +1512,60 @@
           <span class="opath">${o.hops === 0 ? `stay in ${names[0]} for the boss` : names.join(" › ")}</span>
         </button></li>`;
       };
-      const full = bestFullRoutes();
-      const fullHtml = full.routes
-        .map((r, i) => {
-          const counts = new Map();
-          for (const h of r.hits) {
-            for (const sp of h.species) {
-              counts.set(sp.name, (counts.get(sp.name) ?? 0) + 1);
-            }
+      const full = solvePlans();
+      const useMapMode = state.mode === "map";
+      const chipsFor = (path, from = 0, to = path.lastHitIndex) =>
+        path.keys
+          .slice(from, to + 1)
+          .map((key, off) => {
+            const j = from + off;
+            const t = full.s + j;
+            const w = full.sch.bossWaveOf(t);
+            const isHit = w != null && path.hits.some(h => h.wave === w);
+            const gymHere = w != null && full.gymSet.has(w);
+            return `<span class="rc${isHit ? " hit" : gymHere ? " gym" : ""}" title="waves ${stretchLabel(full.sch, t)}${
+              isHit ? ", wild boss with a wanted Pokémon" : gymHere ? ", gym leader" : w == null ? ", no boss wave" : ""
+            }">${byKey.get(key).name}<small>${w ?? stretchLabel(full.sch, t)}</small></span>`;
+          })
+          .join("");
+      const countsText = hits => {
+        const counts = new Map();
+        for (const h of hits) {
+          for (const sp of h.species) {
+            counts.set(sp.name, (counts.get(sp.name) ?? 0) + 1);
           }
-          const chips = r.keys
-            .slice(0, r.lastHitIndex + 1)
-            .map((key, j) => {
-              const t = full.s + j;
-              const w = full.sch.bossWaveOf(t);
-              const hit = w != null && r.hits.some(h => h.wave === w);
-              const gymHere = w != null && full.gymSet.has(w);
-              return `<span class="rc${hit ? " hit" : gymHere ? " gym" : ""}" title="waves ${stretchLabel(full.sch, t)}${
-                hit ? ", wild boss with a wanted Pokémon" : gymHere ? ", gym leader" : w == null ? ", no boss wave" : ""
-              }">${byKey.get(key).name}<small>${w ?? stretchLabel(full.sch, t)}</small></span>`;
+        }
+        return [...counts].map(([n, c]) => `${n} ×${c}`).join(", ");
+      };
+      const fullHtml = full.plans
+        .map(plan => {
+          const p = plan.primary;
+          const active = state.planner.option === `plan:${plan.id}`;
+          const backups = plan.backups
+            .map((b, k) => {
+              const t = full.s + b.branchIndex;
+              const stretchEnd = full.sch.bossWaveOf(t) ?? full.sch.L * t;
+              const extra = b.hits.filter(h => h.wave > stretchEnd);
+              return `<li><button type="button" class="opt backup${state.planner.option === `plan:${plan.id}:${k}` ? " active" : ""}" data-plan="${plan.id}" data-backup="${k}">
+                <span class="opath">If <b>${byKey.get(b.missing).name}</b> isn't offered at ${byKey.get(p.keys[b.branchIndex]).name} (waves ${stretchLabel(full.sch, t)}):${
+                  extra.length ? ` ${extra.length} boss wave${extra.length === 1 ? "" : "s"} left · ${countsText(extra)}` : " no wanted boss waves left"
+                }</span>
+                <span class="opath rchips">${chipsFor(b, b.branchIndex + 1, Math.max(b.lastHitIndex, b.branchIndex + 1))}</span>
+              </button></li>`;
             })
             .join("");
-          const active = state.planner.option === `full:${i}`;
-          return `<li><button type="button" class="opt${active ? " active" : ""}" data-full="${i}">
-            <span class="oname">${r.hits.length} boss wave${r.hits.length === 1 ? "" : "s"}${r.bestBet ? ` <span class="badge sure">best bet</span>` : ""} <span class="muted">· ${[...counts].map(([n, c]) => `${n} ×${c}`).join(", ")}</span></span>
-            <span class="opct" title="chance of holding this route through its last wanted boss wave">${fmtChance(r.probAtLastHit)}</span>
-            <span class="opath rchips">${chips}</span>
-            <span class="opath">≈ ${fmtChance(r.atLeastOne)} to roll at least one of them overall (${pct(r.atLeastOneIfHeld)} if the route holds)</span>
-          </button></li>`;
+          return `<li><button type="button" class="opt${active ? " active" : ""}" data-plan="${plan.id}">
+            <span class="oname">${plan.labels.join(" · ")} <span class="muted">· main line: ${p.hits.length} boss wave${p.hits.length === 1 ? "" : "s"}${
+              p.hits.length ? `, ${countsText(p.hits)}` : ""
+            }</span></span>
+            <span class="opct" title="chance of rolling at least one wanted Pokémon, counting every backup">${fmtChance(plan.atLeastOne)}</span>
+            <span class="opath rchips">${chipsFor(p)}</span>
+            <span class="opath">${
+              useMapMode
+                ? `main line holds ${fmtChance(plan.hold)} of the time (${pct(p.ifHeld)} if it does)`
+                : `this exact line happens ${fmtChance(plan.hold)} of the time`
+            } · ≈ ${plan.expectedHits.toFixed(1)} wanted boss wave${plan.expectedHits.toFixed(1) === "1.0" ? "" : "s"} expected</span>
+          </button>${backups ? `<ul class="backups">${backups}</ul>` : ""}</li>`;
         })
         .join("");
       const isEndless = state.planner.endless;
@@ -1429,15 +1579,13 @@
         <p class="muted small">Percentages are the ${modeText}, multiplied along the route. Click a route to draw it on the map.${
           isEndless ? "" : " Not sure which gym set you have? The first gym leader is on wave 20 or 30."
         }</p>
-        <h3>Best full routes</h3>
-        <p class="muted small">${
-          isEndless
-            ? `Routes up to the End biome at wave ${sch.nextEnd}, safest first.`
-            : "Whole-run routes to wave 180, safest first."
-        } For each number of wanted boss waves this is the most likely way to get them, and a route only makes the list if it is more likely than every route with more boss waves. The big number is the chance of holding the route; “best bet” has the highest overall chance of an actual catch.${
-          isEndless ? "" : " Gym leaders repeat every 3 stretches, so 3-biome loops can keep the gym out of the way."
-        }</p>
-        ${full.routes.length ? `<ul class="routes">${fullHtml}</ul>` : `<p class="muted small">No free boss wave in a wanted biome is reachable from here.</p>`}
+        <h3>Best plans</h3>
+        <p class="muted small">${isEndless ? `Plans up to the End biome at wave ${sch.nextEnd}.` : "Whole-run plans to wave 180."} ${
+          useMapMode
+            ? "A plan ranks the exits at every biome and takes the best one you are offered, so a failed roll just means the backup — the big number counts every backup, not only the main line. “Best bet” maximises the chance of at least one wanted roll, “Most boss waves” the number of wanted boss waves, “No rolls” never depends on a roll."
+            : "Without a Map the game picks the exit, so this is what to expect on the most likely line, with every branch counted in the big number."
+        }${isEndless ? "" : " Gym leaders repeat every 3 stretches, so 3-biome loops can keep the gym out of the way."}</p>
+        ${full.plans.length ? `<ul class="routes">${fullHtml}</ul>` : `<p class="muted small">No free boss wave in a wanted biome is reachable from here.</p>`}
         <h3>One target at a time</h3>
         ${plans
           .map(({ species, targets, options }) => {
@@ -1476,14 +1624,18 @@
             }${wild.length ? `<p class="muted small">Also ${wild.map(o => o.text).join(" / ")} on any ordinary wild wave there.</p>` : ""}`;
           })
           .join("")}`;
-      for (const btn of out.querySelectorAll(".opt[data-full]")) {
+      for (const btn of out.querySelectorAll(".opt[data-plan]")) {
         btn.addEventListener("click", () => {
-          const route = full.routes[Number(btn.dataset.full)];
-          state.planner.option = `full:${btn.dataset.full}`;
+          const plan = full.plans.find(p => p.id === btn.dataset.plan);
+          if (!plan) {
+            return;
+          }
+          const path = btn.dataset.backup != null ? plan.backups[Number(btn.dataset.backup)] : plan.primary;
+          state.planner.option = btn.dataset.backup != null ? `plan:${plan.id}:${btn.dataset.backup}` : `plan:${plan.id}`;
           for (const b of out.querySelectorAll(".opt")) {
             b.classList.toggle("active", b === btn);
           }
-          showFullRoute(route, full.sch);
+          showFullRoute(path, full.sch);
         });
       }
       for (const btn of out.querySelectorAll(".opt[data-opt]")) {

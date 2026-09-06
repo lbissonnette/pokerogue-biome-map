@@ -750,6 +750,31 @@ button {
   opacity: 0.55;
 }
 
+.backups {
+  list-style: none;
+  margin: 4px 0 0 14px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  border-left: 2px solid var(--panel-edge);
+  padding-left: 8px;
+}
+
+.opt.backup {
+  padding: 3px 6px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.opt.backup .opath {
+  grid-column: 1 / span 2;
+  font-size: 13px;
+}
+
+.opt.backup .opath b {
+  color: var(--ink);
+  font-weight: normal;
+}
+
 .rchips {
   display: flex;
   flex-wrap: wrap;
