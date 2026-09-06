@@ -25,7 +25,9 @@
   --font-pixel: "emerald", "Courier New", monospace;
   --node-w: 108px;
   --thumb-w: 104px;
-  --thumb-h: 58px;
+  /* Backdrops are 320x180 but the bottom 50px sit under the game's battle UI and are left flat,
+     so every view shows only the top 130px (the same height as the platform images). */
+  --thumb-h: 42px;
 }
 
 * {
@@ -984,7 +986,7 @@ button {
 .arena {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 320 / 130;
   overflow: hidden;
   background: #000;
   border: 2px solid #1c1822;
@@ -1045,9 +1047,10 @@ button {
 .route img {
   grid-row: 1 / span 2;
   width: 56px;
-  height: 31.5px;
+  height: 23px;
   display: block;
   object-fit: cover;
+  object-position: top;
 }
 
 .route .rname {

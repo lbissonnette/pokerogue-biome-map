@@ -183,7 +183,7 @@
   const ROW = 114;
   const PAD = 36;
   const NODE_W = 108;
-  const NODE_H = 85;
+  const NODE_H = 69; // 42px thumbnail (backdrop cropped above the UI band) + name row + borders
 
   // Any biome the game adds later that has no hand position gets a free slot
   // in the column matching its depth, so the page never breaks.
