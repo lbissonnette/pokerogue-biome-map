@@ -1,0 +1,95 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2026 Logan Bissonnette
+
+SPDX-License-Identifier: AGPL-3.0-only
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PokéRogue Biome Map</title>
+    <link rel="icon" href="assets/items/map.png" />
+    <link rel="stylesheet" href="fonts.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>PokéRogue Biome Map</h1>
+        <p class="subtitle">Every biome, every link, and the odds of taking it.</p>
+      </div>
+      <div class="spacer"></div>
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Which odds to show">
+          <button type="button" data-mode="random" aria-pressed="false" title="Odds of ending up there with no Map, when the game picks for you">No map</button>
+          <button type="button" data-mode="map" aria-pressed="true" title="Odds that a destination is offered when you hold a Map">
+            <img class="pixel" src="assets/items/map.png" alt="" /> With Map
+          </button>
+        </div>
+        <div class="seg">
+          <button type="button" id="toggle-labels" aria-pressed="true" title="Show percentages on every link">Show %</button>
+        </div>
+        <div class="seg zoom" role="group" aria-label="Zoom">
+          <button type="button" id="zoom-out" title="Zoom out">−</button>
+          <button type="button" id="zoom-fit" title="Fit the whole map">Fit</button>
+          <button type="button" id="zoom-in" title="Zoom in">+</button>
+        </div>
+        <a class="hint" href="#all-routes">All routes ↓</a>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <div class="map-column">
+      <div class="wanted" id="wanted"></div>
+      <div class="viewport" id="viewport">
+        <div class="map" id="map">
+          <svg id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <div class="legend" aria-hidden="true">
+          <div class="row"><svg viewBox="0 0 46 12"><path d="M1,6 H44" stroke="currentColor" stroke-width="3" /></svg>always an option</div>
+          <div class="row"><svg viewBox="0 0 46 12"><path d="M1,6 H44" stroke="currentColor" stroke-width="3" stroke-dasharray="7 5" /></svg>needs a 1‑in‑N roll</div>
+          <div class="row swatch-gold"><svg viewBox="0 0 46 12"><path d="M1,6 H44" stroke="currentColor" stroke-width="3" /></svg>leads to</div>
+          <div class="row swatch-blue"><svg viewBox="0 0 46 12"><path d="M1,6 H44" stroke="currentColor" stroke-width="3" /></svg>reached from</div>
+        </div>
+      </div>
+      </div>
+      <aside class="panel" id="panel" aria-live="polite"></aside>
+    </main>
+
+    <section class="all-routes" id="all-routes">
+      <h2>All routes</h2>
+      <p>
+        The same numbers as a table. “No map” is the exact chance of arriving there when the game picks for you; “Offered”
+        is the chance the destination shows up as a choice when you do.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>From</th>
+              <th>To</th>
+              <th>No map</th>
+              <th>Exact</th>
+              <th>Offered with Map</th>
+              <th>Link</th>
+            </tr>
+          </thead>
+          <tbody id="routes-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      Biome art, Pokémon icons, the Map icon and the Emerald font come from the
+      <a href="https://github.com/pagefaultgames/pokerogue-assets">PokéRogue asset repository</a> (CC BY-NC-SA 4.0);
+      link and pool data is generated from the <a href="https://github.com/pagefaultgames/pokerogue">game source</a>
+      (AGPL-3.0). Odds follow <code>SelectBiomePhase</code> and <code>Arena.randomSpecies</code>. Non-commercial fan
+      project; Pokémon is © Nintendo, Creatures and Game Freak, and this site is not affiliated with them or with
+      PokéRogue.
+    </footer>
+
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

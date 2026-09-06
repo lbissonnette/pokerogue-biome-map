@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Logan Bissonnette
+#
+# SPDX-License-Identifier: CC0-1.0
+
+version = 1
+
+# Everything the game's asset repository provides is used under its terms
+# (CC BY-NC-SA 4.0 "to the extent licensable"; see
+# https://github.com/pagefaultgames/pokerogue-assets). Pokémon and its
+# characters remain the property of Nintendo, Creatures Inc. and GAME FREAK.
+[[annotations]]
+path = [
+    "assets/arenas/**",
+    "assets/icons/**",
+    "assets/items/**",
+    "assets/ui/**",
+    "assets/fonts/**",
+    "fonts.css",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024-2026 Pagefault Games"
+SPDX-License-Identifier = "CC-BY-NC-SA-4.0"
+
+# data.js is extracted from PokéRogue's AGPL-licensed source (src/data/balance, src/enums,
+# locales) by build-data.mjs, so it carries that licence too.
+[[annotations]]
+path = ["data.js"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024-2026 Pagefault Games (game data), 2026 Logan Bissonnette (extraction)"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+# Documentation goes with the code.
+[[annotations]]
+path = ["README.md"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Logan Bissonnette"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+# Files of no creative significance.
+[[annotations]]
+path = [".gitignore", "wanted.json"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "NONE"
+SPDX-License-Identifier = "CC0-1.0"
